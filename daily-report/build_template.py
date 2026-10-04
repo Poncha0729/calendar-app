@@ -30,7 +30,6 @@ OUT = Path(__file__).with_name("daily_report_template.xlsx")
 
 # ---------------------------------------------------------------- シート名
 S_HOWTO = "使い方"
-S_FORM = "本日の日報"
 S_DAYS = "月間日報"
 S_HABIT = "毎日やること"
 S_EXP = "経費ログ"
@@ -82,7 +81,7 @@ HABITS = [
      "急ぎではないが重要な仕事は、後回しにするといつまでも終わらない。売上を動かす仕事を1日の最初に固定する"),
     ("売上", "新規アプローチを目標件数やる", "新規アプローチ",
      "架電・DM・訪問・紹介依頼などで、見込み客との新しい接点をつくる",
-     "本日の日報の目標件数",
+     "月間日報の1日の目標",
      "受注は商談から、商談は接点から生まれる。入口の件数が足りなければ、成約率が高くても売上は伸びない"),
     ("売上", "既存顧客と話す", "既存顧客",
      "最低1社と話し、課題・不満・追加の要望を聞く。満足している顧客には紹介を頼む",
@@ -269,56 +268,49 @@ def status_colors(ws, rng):
 
 
 # ---------------------------------------------------------------- 日次ログの列
-# (キー, 見出し, 提出データ2行目の数式 or None(日課), 数値書式, 列幅)
-F = {}  # 本日の日報の入力・計算セル（下で決まる）
-
-
-def log_columns():
-    fs = q(S_FORM)
-    cols = [
-        ("date", "日付", f"={fs}!{F['date']}", FMT_DATE, 12),
-        ("dow", "曜日", f"={fs}!{F['dow']}", None, 5),
-        ("year", "計画年目", f"={fs}!{F['year']}", "0", 6),
-        ("health", "体調", f'=IF({fs}!{F["health"]}="","",{fs}!{F["health"]})', "0", 5),
-        ("theme", "今日のテーマ", f"={fs}!{F['theme']}&\"\"", None, 22),
-        ("t1r", "Top3①結果", f"={fs}!{F['top_res'][0]}&\"\"", None, 7),
-        ("t2r", "Top3②結果", f"={fs}!{F['top_res'][1]}&\"\"", None, 7),
-        ("t3r", "Top3③結果", f"={fs}!{F['top_res'][2]}&\"\"", None, 7),
-        ("toprate", "Top3実行率", f"={fs}!{F['top_rate']}", FMT_PCT, 8),
-        ("sales", "売上高", f"={fs}!{F['sales']}", FMT_YEN, 11),
-        ("cogs", "売上原価", f"={fs}!{F['cogs']}", FMT_YEN, 11),
-        ("gross", "粗利", f"={fs}!{F['gross']}", FMT_YEN, 11),
-        ("sga", "販管費", f"={fs}!{F['sga']}", FMT_YEN, 11),
-        ("op", "営業利益", f"={fs}!{F['op']}", FMT_YEN, 11),
-        ("cash_in", "入金額", f"={fs}!{F['cash_in']}", FMT_YEN, 11),
-        ("cash_out", "出金額", f"={fs}!{F['cash_out']}", FMT_YEN, 11),
-        ("cash", "現預金残高", f'=IF({fs}!{F["cash"]}="","",{fs}!{F["cash"]})', FMT_YEN, 12),
-        ("approach", "新規アプローチ", f"={fs}!{F['approach']}", FMT_CNT, 8),
-        ("appo", "アポ獲得", f"={fs}!{F['appo']}", FMT_CNT, 7),
-        ("meeting", "商談", f"={fs}!{F['meeting']}", FMT_CNT, 7),
-        ("proposal", "提案・見積", f"={fs}!{F['proposal']}", FMT_CNT, 7),
-        ("won", "受注数", f"={fs}!{F['won']}", FMT_CNT, 7),
-        ("won_amt", "受注金額", f"={fs}!{F['won_amt']}", FMT_YEN, 11),
-        ("existing", "既存顧客接点", f"={fs}!{F['existing']}", FMT_CNT, 7),
-        ("referral", "紹介獲得", f"={fs}!{F['referral']}", FMT_CNT, 7),
-    ]
-    for i in range(N_HABIT):
-        cols.append((f"h{i + 1}", None, f"={fs}!{F['habit_res'][i]}&\"\"", None, 7))
-    cols += [
-        ("habit_rate", "日課達成率", f"={fs}!{F['habit_rate']}", FMT_PCT, 8),
-        ("result", "今日の成果", f"={fs}!{F['result']}&\"\"", None, 28),
-        ("keep", "Keep", f"={fs}!{F['keep']}&\"\"", None, 28),
-        ("problem", "Problem", f"={fs}!{F['problem']}&\"\"", None, 28),
-        ("try", "Try", f"={fs}!{F['try']}&\"\"", None, 28),
-        ("learn", "学び・気づき", f"={fs}!{F['learn']}&\"\"", None, 28),
-        ("n1", "明日のTop3①", f"={fs}!{F['next'][0]}&\"\"", None, 24),
-        ("n2", "明日のTop3②", f"={fs}!{F['next'][1]}&\"\"", None, 24),
-        ("n3", "明日のTop3③", f"={fs}!{F['next'][2]}&\"\"", None, 24),
-        ("consult", "相談・決めること", f"={fs}!{F['consult']}&\"\"", None, 24),
-        ("submitted", "提出日時", "=NOW()", FMT_DT, 16),
-    ]
-    return cols
-
+# (キー, 見出し, 数値書式, 列幅)。日課の見出しは「毎日やること」シートから作る。
+LOG_COLS = [
+    ("date", "日付", FMT_DATE, 12),
+    ("dow", "曜日", None, 5),
+    ("year", "計画年目", "0", 6),
+    ("health", "体調", "0", 5),
+    ("theme", "今日のテーマ", None, 22),
+    ("t1r", "Top3①結果", None, 7),
+    ("t2r", "Top3②結果", None, 7),
+    ("t3r", "Top3③結果", None, 7),
+    ("toprate", "Top3実行率", FMT_PCT, 8),
+    ("sales", "売上高", FMT_YEN, 11),
+    ("cogs", "売上原価", FMT_YEN, 11),
+    ("gross", "粗利", FMT_YEN, 11),
+    ("sga", "販管費", FMT_YEN, 11),
+    ("op", "営業利益", FMT_YEN, 11),
+    ("cash_in", "入金額", FMT_YEN, 11),
+    ("cash_out", "出金額", FMT_YEN, 11),
+    ("cash", "現預金残高", FMT_YEN, 12),
+    ("approach", "新規アプローチ", FMT_CNT, 8),
+    ("appo", "アポ獲得", FMT_CNT, 7),
+    ("meeting", "商談", FMT_CNT, 7),
+    ("proposal", "提案・見積", FMT_CNT, 7),
+    ("won", "受注数", FMT_CNT, 7),
+    ("won_amt", "受注金額", FMT_YEN, 11),
+    ("existing", "既存顧客接点", FMT_CNT, 7),
+    ("referral", "紹介獲得", FMT_CNT, 7),
+    *[(f"h{i + 1}", None, None, 7) for i in range(N_HABIT)],
+    ("habit_rate", "日課達成率", FMT_PCT, 8),
+    ("result", "今日の成果", None, 28),
+    ("keep", "Keep", None, 28),
+    ("problem", "Problem", None, 28),
+    ("try", "Try", None, 28),
+    ("learn", "学び・気づき", None, 28),
+    ("n1", "明日のTop3①", None, 24),
+    ("n2", "明日のTop3②", None, 24),
+    ("n3", "明日のTop3③", None, 24),
+    ("consult", "相談・決めること", None, 24),
+    ("submitted", "提出日時", FMT_DT, 16),
+]
+L = {key: get_column_letter(i + 1) for i, (key, *_rest) in enumerate(LOG_COLS)}
+TEXT_KEYS = {"theme", "t1r", "t2r", "t3r", "result", "keep", "problem", "try", "learn",
+             "n1", "n2", "n3", "consult"} | {f"h{i + 1}" for i in range(N_HABIT)}
 
 LOG_GROUPS = [  # (最初のキー, 最後のキー, 帯の見出し)
     ("date", "theme", "基本情報"),
@@ -336,7 +328,6 @@ def build():
     wb = Workbook()
     ws_howto = wb.active
     ws_howto.title = S_HOWTO
-    ws_form = wb.create_sheet(S_FORM)
     ws_days = wb.create_sheet(S_DAYS)
     ws_habit = wb.create_sheet(S_HABIT)
     ws_exp = wb.create_sheet(S_EXP)
@@ -370,7 +361,7 @@ def build():
          "仮の値：10年計画の「必要な営業担当者数」の計算に使う"),
         ("exist", "既存顧客との接点（1日の目標）", 1, "社", FMT_CNT,
          "毎日やることNo.5の目安"),
-        ("name", "記入者", None, "", None, "自分の名前（本日の日報と提出メールに表示）"),
+        ("name", "記入者", None, "", None, "自分の名前（提出メールの件名に表示）"),
         ("mail", "提出先メールアドレス", None, "", None,
          "Apps Scriptで提出したときにメールを送る宛先。空欄なら送らない"),
         ("remind", "リマインドの時刻", 21, "時", "0",
@@ -416,11 +407,11 @@ def build():
     ws = ws_habit
     title(ws, "A1", "年商1000億円（10年後）に向けて毎日やること", "G1")
     ws["A2"] = (f'="10年目の目標 年"&TEXT({SET["t10"]},"#,##0")&"億円は、1日あたり約"'
-                f'&TEXT({SET["t10"]}/365,"#,##0.0")&"億円。毎日の行動を下の16項目に分け、「本日の日報」で○△×をつける。"')
+                f'&TEXT({SET["t10"]}/365,"#,##0.0")&"億円。毎日の行動を下の16項目に分け、「月間日報」で毎日○△×をつける。"')
     put(ws, "A2", size=10, color="000000", wrap=True)
     ws.merge_cells("A2:G2")
     ws.row_dimensions[2].height = 20
-    note(ws, "A3", "項目名・短縮名・目安は自分の事業に合わせて書き換えてよい（本日の日報・日次ログ・月次集計に自動で反映される）。",
+    note(ws, "A3", "項目名・短縮名・目安は自分の事業に合わせて書き換えてよい（月間日報・日次ログ・月次集計に自動で反映される）。",
          "G3", 16)
     header(ws, 4, ["No", "分類", "毎日やること", "短縮名（ログ用）", "具体的な行動", "目安",
                    "1000億につながる理由"], height=30)
@@ -454,282 +445,334 @@ def build():
         d = "$" if absolute else ""
         return f"{q(S_HABIT)}!{d}{col}{d}{HABIT_ROW0 + i}"
 
-    # ============================================================ 本日の日報
-    ws = ws_form
-    title(ws, "A1", "本日の日報・日次決算", "F1")
-    note(ws, "A2", "薄い黄色のセルに入力（青い文字）。白いセルは自動計算、緑の文字はほかのシートから参照。"
-         "入力が終わったらメニュー「日報」→「本日の日報を提出」（スクリプトがない場合は「提出データ」シートの手順）。",
-         "F2", 30)
-
-    # 1. 基本情報
-    section(ws, 4, "1. 基本情報")
-    put(ws, "A5", "日付", border=True)
-    inp(ws, "B5", date(2026, 10, 1), fmt=FMT_DATE, align="center")
-    F["date"] = "B5"
-    calc(ws, "C5", '=IF(B5="","",CHOOSE(WEEKDAY(B5),"日","月","火","水","木","金","土"))',
-         align="center")
-    F["dow"] = "C5"
-    put(ws, "D5", "計画開始から", border=True)
-    calc(ws, "E5", f'=IF(B5="","",B5-{SET["start"]}+1)', fmt='0"日目"', link=True, align="right")
-    note(ws, "F5", "Ctrl + ;（セミコロン）で今日の日付を入力できる")
-
-    put(ws, "A6", "計画年目", border=True)
-    calc(ws, "B6", f'=MIN(10,IFERROR(DATEDIF({SET["start"]},B5,"Y")+1,1))', fmt='0"年目"',
-         link=True, align="center")
-    F["year"] = "B6"
-    put(ws, "C6", None, border=True)
-    put(ws, "D6", "前回の提出日", border=True)
-    calc(ws, "E6", f"=_xlfn.MAXIFS({q(S_LOG)}!$A:$A,{q(S_LOG)}!$A:$A,\"<\"&$B$5)",
-         fmt='yyyy/mm/dd;;"なし"', link=True, align="right")
-    F["prev"] = "E6"
-    note(ws, "F6", "日次ログにある、この日付より前の最新の日報")
-
-    put(ws, "A7", "体調（1〜5）", border=True)
-    inp(ws, "B7", fmt="0", align="center")
-    F["health"] = "B7"
-    put(ws, "C7", None, border=True)
-    put(ws, "D7", "記入者", border=True)
-    calc(ws, "E7", f'={SET["name"]}&""', link=True, align="right")
-    note(ws, "F7", "5＝絶好調、3＝普通、1＝不調")
-
-    put(ws, "A8", "今日のテーマ（一言）", border=True)
-    inp(ws, "B8", wrap=True)
-    ws.merge_cells("B8:F8")
-    F["theme"] = "B8"
-
-    # 2. 今日のTop3
-    section(ws, 10, "2. 今日のTop3（前回の日報で決めたこと）")
-    header(ws, 11, ["項目", "結果（○△×）", "内容（前回の日報から自動表示）", "", "", ""])
-    ws.merge_cells("C11:F11")
-    F["top_res"] = []
-    next_cols = ["AV", "AW", "AX"]  # 日次ログの「明日のTop3」列（下で検証する）
-    for i in range(3):
-        r = 12 + i
-        put(ws, f"A{r}", ["① 最重要", "②", "③"][i], border=True)
-        inp(ws, f"B{r}", align="center")
-        F["top_res"].append(f"B{r}")
-        calc(ws, f"C{r}",
-             f"=IFERROR(INDEX({q(S_LOG)}!${next_cols[i]}:${next_cols[i]},"
-             f"MATCH($E$6,{q(S_LOG)}!$A:$A,0))&\"\",\"\")", link=True, wrap=True)
-        ws.merge_cells(f"C{r}:F{r}")
-        ws.row_dimensions[r].height = 30
-    put(ws, "A15", "Top3の実行率", border=True)
-    calc(ws, "B15", '=IF(COUNTIF(C12:C14,"?*")=0,0,COUNTIF(B12:B14,"○")/COUNTIF(C12:C14,"?*"))',
-         fmt=FMT_PCT, align="center")
-    F["top_rate"] = "B15"
-    note(ws, "C15", "○の数÷Top3の数。前回の日報がない日は「-」", "F15")
-
-    # 3. 目標と進捗
-    section(ws, 17, "3. 売上目標と進捗（年商1000億からの逆算）")
-    header(ws, 18, ["項目", "実績", "単位", "目標", "達成率", "メモ"])
-    plan_d = f"{q(S_PLAN)}!$D$10:$D$19"
-    month_start = "DATE(YEAR($B$5),MONTH($B$5),1)"
-    year_start = f'EDATE({SET["start"]},12*($B$6-1))'
+    # ============================================================ 共通の参照
     log_a = f"{q(S_LOG)}!$A:$A"
-    log_sales = f"{q(S_LOG)}!$J:$J"
-    rows3 = [
-        ("今日の売上", "=B38", "=D21/365", "目標＝今年の売上目標÷365"),
-        ("今月の売上（本日まで）",
-         f'=SUMIFS({log_sales},{log_a},">="&{month_start},{log_a},"<"&$B$5)+$B$38',
-         "=D21/12", "目標＝今年の売上目標÷12"),
-        ("今年の売上（本日まで）",
-         f'=SUMIFS({log_sales},{log_a},">="&{year_start},{log_a},"<"&$B$5)+$B$38',
-         f"=INDEX({plan_d},$B$6)*10^8", None),
-    ]
-    for i, (label, actual, target, memo) in enumerate(rows3):
-        r = 19 + i
-        put(ws, f"A{r}", label, border=True)
-        calc(ws, f"B{r}", actual, fmt=FMT_YEN, link=(i > 0))
-        put(ws, f"C{r}", "円", border=True, align="center")
-        calc(ws, f"D{r}", target, fmt=FMT_YEN, link=(i == 2))
-        calc(ws, f"E{r}", f"=IF(D{r}=0,0,B{r}/D{r})", fmt=FMT_PCT)
-        if memo:
-            note(ws, f"F{r}", memo)
-    put(ws, "F21", '="計画"&$B$6&"年目の目標（10年計画シート）"', size=9, color="595959")
-    put(ws, "A22", "今月の目標まであと", border=True)
-    calc(ws, "B22", "=MAX(0,D20-B20)", fmt=FMT_YEN)
-    put(ws, "C22", "円", border=True, align="center")
-    note(ws, "F22", "今月の目標から今月の売上を引いた額")
-    put(ws, "A23", "明日以降に必要な売上（1日あたり）", border=True)
-    calc(ws, "B23", "=IF(EOMONTH($B$5,0)-$B$5<=0,0,B22/(EOMONTH($B$5,0)-$B$5))", fmt=FMT_YEN)
-    put(ws, "C23", "円", border=True, align="center")
-    note(ws, "F23", "残りの額を、月末までの残り日数で割った額")
-
-    # 4. 営業実績
-    section(ws, 25, "4. 営業実績（本日）")
-    header(ws, 26, ["項目", "実績", "単位", "目標", "達成率", "メモ"])
+    log_sales = f"{q(S_LOG)}!${L['sales']}:${L['sales']}"
+    plan_d = f"{q(S_PLAN)}!$D$10:$D$19"
     plan = lambda col: f"{q(S_PLAN)}!${col}$10:${col}$19"  # noqa: E731
-    sales_rows = [
-        ("approach", "新規アプローチ数", "件", f"=INDEX({plan('L')},$B$6)",
-         "架電・DM・訪問・紹介依頼など、見込み客との新しい接点。目標は10年計画の逆算"),
-        ("appo", "アポ獲得数", "件", None, None),
-        ("meeting", "商談数（実施）", "件", f"=INDEX({plan('J')},$B$6)/365",
-         "目標＝10年計画の年間必要商談数÷365"),
-        ("proposal", "提案・見積の提出数", "件", None, None),
-        ("won", "受注数", "件", f"=INDEX({plan('I')},$B$6)/365", "目標＝10年計画の年間必要受注件数÷365"),
-        ("won_amt", "受注金額", "円", "=D19", "契約した金額（売上の計上日とずれてもよい）"),
-        ("existing", "既存顧客との面談・連絡", "社", f'={SET["exist"]}', "毎日やることNo.5"),
-        ("referral", "紹介でもらった見込み客", "件", None, None),
-    ]
-    for i, (key, label, unit, target, memo) in enumerate(sales_rows):
-        r = 27 + i
-        put(ws, f"A{r}", label, border=True)
-        inp(ws, f"B{r}", fmt=FMT_YEN if unit == "円" else FMT_CNT)
-        F[key] = f"B{r}"
-        put(ws, f"C{r}", unit, border=True, align="center")
-        if target:
-            calc(ws, f"D{r}", target, fmt=FMT_YEN if unit == "円" else FMT_DEC,
-                 link=(target.startswith(f"=INDEX") or "設定" in target))
-            calc(ws, f"E{r}", f"=IF(D{r}=0,0,B{r}/D{r})", fmt=FMT_PCT)
-        else:
-            put(ws, f"D{r}", None, border=True)
-            put(ws, f"E{r}", None, border=True)
-        if memo:
-            note(ws, f"F{r}", memo)
-
-    # 5. 日次決算
-    section(ws, 36, "5. 日次決算（本日）")
-    header(ws, 37, ["項目", "本日", "単位", "今月累計", "", "メモ"])
     exp_a = f"{q(S_EXP)}!$A:$A"
     exp_b = f"{q(S_EXP)}!$B:$B"
     exp_d = f"{q(S_EXP)}!$D:$D"
-    mtd = f'{exp_a},">="&{month_start},{exp_a},"<="&$B$5'
 
-    def cogs(crit):
-        return f'=SUMIFS({exp_d},{crit},{exp_b},"{COGS_PREFIX}*")'
+    def log_col(key):
+        return f"{q(S_LOG)}!${L[key]}:${L[key]}"
 
-    pl_rows = [
-        ("sales", "売上高", None, "=B20", "本日計上した売上（税抜）"),
-        ("cogs", "売上原価", cogs(f"{exp_a},$B$5"), cogs(mtd),
-         f"経費ログのうち、科目が「{COGS_PREFIX}」で始まる費用の合計"),
-        ("gross", "粗利", "=B38-B39", "=D38-D39", None),
-        ("gross_rate", "粗利率", "=IF(B38=0,0,B40/B38)", "=IF(D38=0,0,D40/D38)", None),
-        ("sga", "販管費", f"=SUMIFS({exp_d},{exp_a},$B$5)-B39", f"=SUMIFS({exp_d},{mtd})-D39",
-         "経費ログのうち、原価以外の科目の合計"),
-        ("op", "営業利益", "=B40-B42", "=D40-D42", None),
-        ("op_rate", "営業利益率", "=IF(B38=0,0,B43/B38)", "=IF(D38=0,0,D43/D38)", None),
+    # ============================================================ 月間日報（毎日の入力画面）
+    # 1か月分を1シートにまとめ、1日1列（F〜AJ列）に毎日入力する。
+    # 入力欄（薄い黄色）は「入力欄」の行範囲にまとめ、自動計算の行はその上と下に置く。
+    ws = ws_days
+    D0 = 6  # 1日目の列（F列）
+    day_cols = [get_column_letter(D0 + k) for k in range(31)]
+    c0, c1 = day_cols[0], day_cols[-1]
+    PCT_DAY = '0%;▲0%;"-"'
+
+    def span(r):
+        return f"{c0}{r}:{c1}{r}"
+
+    layout = [  # (種類, キー, 見出し, 数値書式)
+        ("band", None, "今日のTop3（前回の日報で決めたこと・自動表示）", None),
+        ("prev", "prev_day", "前回の日報の日", 'm/d;;"-"'),
+        ("top", "top1", "① 最重要", None),
+        ("top", "top2", "②", None),
+        ("top", "top3", "③", None),
+        ("band", None, "1. Top3の結果と体調（入力）", None),
+        ("sym", "t1r", "Top3 ① の結果（○△×）", None),
+        ("sym", "t2r", "Top3 ② の結果（○△×）", None),
+        ("sym", "t3r", "Top3 ③ の結果（○△×）", None),
+        ("num", "health", "体調（1〜5）", "0"),
+        ("text", "theme", "今日のテーマ（一言）", None),
+        ("band", None, "2. 売上・営業実績（入力）", None),
+        ("num", "sales", "売上高（円・税抜）", FMT_YEN),
+        ("num", "approach", "新規アプローチ数（件）", FMT_CNT),
+        ("num", "appo", "アポ獲得数（件）", FMT_CNT),
+        ("num", "meeting", "商談数（件）", FMT_CNT),
+        ("num", "proposal", "提案・見積の提出数（件）", FMT_CNT),
+        ("num", "won", "受注数（件）", FMT_CNT),
+        ("num", "won_amt", "受注金額（円）", FMT_YEN),
+        ("num", "existing", "既存顧客との面談・連絡（社）", FMT_CNT),
+        ("num", "referral", "紹介でもらった見込み客（件）", FMT_CNT),
+        ("band", None, "3. 現預金（入力・任意）", None),
+        ("num", "cash_in", "入金額（円）", FMT_YEN),
+        ("num", "cash_out", "出金額（円）", FMT_YEN),
+        ("num", "cash", "終業時の現預金残高（実際・円）", FMT_YEN),
+        ("band", None, "4. 1000億への日課（○＝できた、△＝一部、×＝できなかった）", None),
+        *[("sym", f"h{i + 1}", f'={habit_ref("A", i)}&". "&{habit_ref("C", i)}', None) for i in range(N_HABIT)],
+        ("band", None, "5. 振り返り（KPT）と明日の計画（入力）", None),
+        ("text", "result", "今日いちばんの成果（数字で）", None),
+        ("text", "keep", "Keep：うまくいった・続けること", None),
+        ("text", "problem", "Problem：課題・うまくいかなかったこと", None),
+        ("text", "try", "Try：次に試すこと", None),
+        ("text", "learn", "学び・気づき", None),
+        ("text", "n1", "明日のTop3 ①（最重要）", None),
+        ("text", "n2", "明日のTop3 ②", None),
+        ("text", "n3", "明日のTop3 ③", None),
+        ("text", "consult", "相談したいこと・決めること", None),
+        ("band", None, "6. 日次決算（自動計算）", None),
+        ("calc", "cogs", f"売上原価（経費ログの「{COGS_PREFIX}」）", FMT_YEN),
+        ("calc", "gross", "粗利", FMT_YEN),
+        ("calc", "gross_rate", "粗利率", PCT_DAY),
+        ("calc", "sga", "販管費（経費ログの原価以外）", FMT_YEN),
+        ("calc", "op", "営業利益", FMT_YEN),
+        ("calc", "op_rate", "営業利益率", PCT_DAY),
+        ("calc", "exp_count", "経費の記録件数", FMT_CNT),
+        ("band", None, "7. 売上の進捗（自動計算）", None),
+        ("calc", "cum_sales", "今月の累計売上", FMT_YEN),
+        ("calc", "to_go", "今月の目標まであと", FMT_YEN),
+        ("calc", "need", "月末までに必要な1日あたりの売上", FMT_YEN),
+        ("band", None, "8. 実行率（自動計算）", None),
+        ("calc", "toprate", "Top3の実行率", PCT_DAY),
+        ("calc", "habit_rate", "日課の達成率", PCT_DAY),
+        ("band", None, "9. 現預金の確認（自動計算）", None),
+        ("calc", "prev_cash", "前日までの残高", FMT_YEN),
+        ("calc", "cash_calc", "計算上の残高（前日までの残高＋入金−出金）", FMT_YEN),
+        ("calc", "cash_diff", "差異（計算上−実際）", FMT_YEN),
     ]
-    for i, (key, label, today, month, memo) in enumerate(pl_rows):
-        r = 38 + i
-        pct = key.endswith("rate")
-        put(ws, f"A{r}", label, border=True, bold=key in ("gross", "op"))
-        if today is None:
-            inp(ws, f"B{r}", fmt=FMT_YEN)
+    ROW, bands, inputs = {}, [], []
+    for i, (kind, key, *_rest) in enumerate(layout):
+        r = 6 + i
+        if kind == "band":
+            bands.append(r)
         else:
-            calc(ws, f"B{r}", today, fmt=FMT_PCT if pct else FMT_YEN, link=key in ("cogs", "sga"),
-                 bold=key in ("gross", "op"))
-        F[key] = f"B{r}"
-        put(ws, f"C{r}", "％" if pct else "円", border=True, align="center")
-        calc(ws, f"D{r}", month, fmt=FMT_PCT if pct else FMT_YEN,
-             link=key in ("sales", "cogs", "sga"), bold=key in ("gross", "op"))
-        put(ws, f"E{r}", None, border=True)
-        if memo:
-            note(ws, f"F{r}", memo)
-    put(ws, "A45", "経費の記録件数", border=True)
-    calc(ws, "B45", f"=COUNTIFS({exp_a},$B$5)", fmt="0", link=True)
-    put(ws, "C45", "件", border=True, align="center")
-    note(ws, "F45", "費用は「経費ログ」に1件1行で入力。0件のときは記録漏れがないか確認")
-    put(ws, "A46", "現預金（任意）", bold=True, color=NAVY, bg=C_SUB)
-    ws.merge_cells("A46:F46")
-    cash_rows = [
-        ("prev_cash", "前回の現預金残高",
-         f"=IFERROR(N(INDEX({q(S_LOG)}!$Q:$Q,MATCH($E$6,{log_a},0))),0)", "前回提出した日報の残高"),
-        ("cash_in", "本日の入金額", None, None),
-        ("cash_out", "本日の出金額", None, None),
-        ("cash_calc", "計算上の残高", "=B47+B48-B49", "前回の残高＋入金−出金"),
-        ("cash", "終業時の現預金残高（実際）", None, "銀行口座と手元現金の合計"),
-        ("cash_diff", "差異（計算上−実際）", '=IF(OR($B$51="",$E$6=0),0,B50-B51)',
-         "0でなければ、入出金の記録漏れがないか確認"),
-    ]
-    for i, (key, label, formula, memo) in enumerate(cash_rows):
-        r = 47 + i
-        put(ws, f"A{r}", label, border=True)
-        if formula is None:
-            inp(ws, f"B{r}", fmt=FMT_YEN)
+            ROW[key] = r
+        if kind in ("sym", "num", "text"):
+            inputs.append(r)
+    in0, in1 = inputs[0], inputs[-1]  # 入力欄の行範囲（この間には見出しの帯と入力行しかない）
+    last_row = 6 + len(layout) - 1
+    R = ROW
+    h1, h16 = R["h1"], R[f"h{N_HABIT}"]
+
+    # 1日ごとの自動計算（col: その日の列、prev: 前日の列）
+    def day_formula(key, col, prev):
+        d = f"{col}$3"
+        if key == "prev_day":
+            if prev is None:
+                return f'=IF({d}="","",_xlfn.MAXIFS({log_a},{log_a},"<"&{d}))'
+            return f'=IF({d}="","",IF(COUNTA({prev}${in0}:{prev}${in1})>0,{prev}$3,{prev}{R["prev_day"]}))'
+        if key in ("top1", "top2", "top3"):
+            n = R[f"n{key[-1]}"]
+            p = f"{col}${R['prev_day']}"
+            return (f'=IF(N({p})=0,"",IF({p}>=${c0}$3,INDEX(${c0}{n}:${c1}{n},{p}-${c0}$3+1),'
+                    f'IFERROR(INDEX({log_col("n" + key[-1])},MATCH({p},{log_a},0)),""))&"")')
+        if key == "cogs":
+            return f'=IF({d}="","",SUMIFS({exp_d},{exp_a},{d},{exp_b},"{COGS_PREFIX}*"))'
+        if key == "gross":
+            return f'=IF({d}="","",N({col}{R["sales"]})-{col}{R["cogs"]})'
+        if key == "sga":
+            return f'=IF({d}="","",SUMIFS({exp_d},{exp_a},{d})-{col}{R["cogs"]})'
+        if key == "op":
+            return f'=IF({d}="","",{col}{R["gross"]}-{col}{R["sga"]})'
+        if key in ("gross_rate", "op_rate"):
+            num = R["gross" if key == "gross_rate" else "op"]
+            return f'=IF(N({col}{R["sales"]})=0,"",{col}{num}/{col}{R["sales"]})'
+        if key == "exp_count":
+            return f'=IF({d}="","",COUNTIFS({exp_a},{d}))'
+        if key == "cum_sales":
+            return f'=IF({d}="","",SUM(${c0}{R["sales"]}:{col}{R["sales"]}))'
+        if key == "to_go":
+            return f'=IF({d}="","",MAX(0,$D${R["sales"]}-{col}{R["cum_sales"]}))'
+        if key == "need":
+            return (f'=IF({d}="","",IF(EOMONTH({d},0)-{d}<=0,0,'
+                    f'{col}{R["to_go"]}/(EOMONTH({d},0)-{d})))')
+        if key == "toprate":  # 日報を書いた日だけ計算する（空欄の日を0%にしない）
+            return (f'=IF(OR(COUNTA({col}${in0}:{col}${in1})=0,COUNTIF({col}{R["top1"]}:{col}{R["top3"]},"?*")=0),"",'
+                    f'COUNTIF({col}{R["t1r"]}:{col}{R["t3r"]},"○")/COUNTIF({col}{R["top1"]}:{col}{R["top3"]},"?*"))')
+        if key == "habit_rate":
+            return (f'=IF(COUNTIF({col}{h1}:{col}{h16},"?*")=0,"",'
+                    f'COUNTIF({col}{h1}:{col}{h16},"○")/COUNTIF($A${h1}:$A${h16},"?*"))')
+        if key == "prev_cash":  # 前日までに入力した最新の残高（月初は日次ログから）
+            if prev is None:
+                cash = log_col("cash")
+                return (f'=IFERROR(INDEX({cash},MATCH(_xlfn.MAXIFS({log_a},{log_a},"<"&${c0}$3,'
+                        f'{cash},"<>"),{log_a},0)),"")')
+            return f'=IF({prev}{R["cash"]}<>"",{prev}{R["cash"]},{prev}{R["prev_cash"]})'
+        if key == "cash_calc":
+            return (f'=IF(OR({d}="",{col}{R["prev_cash"]}="",COUNT({col}{R["cash_in"]},{col}{R["cash_out"]},'
+                    f'{col}{R["cash"]})=0),"",{col}{R["prev_cash"]}+N({col}{R["cash_in"]})-N({col}{R["cash_out"]}))')
+        if key == "cash_diff":
+            return f'=IF(OR({col}{R["cash"]}="",{col}{R["cash_calc"]}=""),"",{col}{R["cash_calc"]}-{col}{R["cash"]})'
+        raise KeyError(key)
+
+    # 左の列：1日の目標・月計・月目標（達成率は月計÷月目標）
+    targets = {
+        "sales": (f"=INDEX({plan_d},$C$2)*10^8/365", f"=INDEX({plan_d},$C$2)*10^8/12"),
+        "approach": (f"=INDEX({plan('L')},$C$2)", f"=INDEX({plan('K')},$C$2)/12"),
+        "meeting": (f"=INDEX({plan('J')},$C$2)/365", f"=INDEX({plan('J')},$C$2)/12"),
+        "won": (f"=INDEX({plan('I')},$C$2)/365", f"=INDEX({plan('I')},$C$2)/12"),
+        "won_amt": (f"=$B${R['sales']}", f"=$D${R['sales']}"),
+        "existing": (f'={SET["exist"]}', f'=IFERROR({SET["exist"]}*DAY(EOMONTH(${c0}$3,0)),0)'),
+    }
+    totals = {
+        "health": ("avg", "0.0"), "cash": ("last", FMT_YEN),
+        "gross_rate": ("ratio", FMT_PCT), "op_rate": ("ratio", FMT_PCT),
+        "toprate": ("avg", FMT_PCT), "habit_rate": ("avg", FMT_PCT),
+        "cum_sales": (None, None), "to_go": (None, None), "need": (None, None),
+        "prev_cash": (None, None), "cash_calc": (None, None), "cash_diff": (None, None),
+    }
+
+    title(ws, "A1", "月間日報（1日1列で毎日入力）", "E1")
+    note(ws, f"{c0}1", "毎日、その日の列の薄い黄色のセルに入力し、メニュー「日報」→「本日の日報を提出」で提出する。"
+         "白いセルは自動計算、緑の文字はほかのシートから参照。月末はメニュー「日報」→「月を締めて翌月へ進む」。",
+         f"{c1}1")
+    ws.row_dimensions[1].height = 24
+    put(ws, "A2", "対象の月", border=True, bold=True)
+    inp(ws, "B2", date(2026, 10, 1), fmt='yyyy"年"m"月"', align="center")
+    calc(ws, "C2", f'=MIN(10,IFERROR(DATEDIF({SET["start"]},$B$2,"Y")+1,1))', fmt='0"年目"', link=True,
+         align="center")
+    put(ws, "D2", "提出する日", border=True, bold=True)
+    inp(ws, "E2", fmt="m/d", align="center")
+    note(ws, f"{c0}2", "「提出する日」が空欄なら今日の日付で提出する。前の日の分を提出するときは、その日付を入力する（例：10/3）。"
+         "1日の目標と月目標は、対象の月の計画年目（10年計画）から計算する。", f"{c1}2", 28)
+    dv = DataValidation(type="date", operator="greaterThan", formula1="1", allow_blank=True)
+    dv.error = "日付を入力してください（例：2026/10/1）"
+    dv.errorTitle = "入力エラー"
+    ws.add_data_validation(dv)
+    dv.add("B2")
+    dv.add("E2")
+
+    header(ws, 3, ["項目", "1日の目標", "月計", "月目標", "達成率"])
+    header(ws, 4, ["曜日", "", "", "", ""])
+    put(ws, "A5", "提出（○＝日次ログに提出済み）", border=True, bold=True)
+    calc(ws, "C5", f"=COUNT({span(5)})", fmt='0"日"', align="center", bold=True)
+    for col in "BDE":
+        put(ws, f"{col}5", None, border=True)
+    for k, col in enumerate(day_cols):
+        prev = get_column_letter(D0 + k - 1)
+        day = ('=IF(ISNUMBER($B$2),DATE(YEAR($B$2),MONTH($B$2),1),"")' if k == 0
+               else f'=IF({prev}3="","",IF(MONTH({prev}3+1)<>MONTH({prev}3),"",{prev}3+1))')
+        put(ws, f"{col}3", day, bold=True, color=NAVY, bg=C_HEAD, align="center", border=True, fmt="m/d")
+        put(ws, f"{col}4", f'=IF({col}3="","",CHOOSE(WEEKDAY({col}3),"日","月","火","水","木","金","土"))',
+            bold=True, color=NAVY, bg=C_HEAD, align="center", border=True)
+        calc(ws, f"{col}5", f'=IF({col}3="","",IFERROR(MATCH({col}3,{log_a},0),""))', fmt='"○";;',
+             link=True, align="center")
+
+    for i, (kind, key, label, fmt) in enumerate(layout):
+        r = 6 + i
+        if kind == "band":  # 日付の列は結合しない（入力欄の範囲をまとめて選んで消せるように）
+            put(ws, f"A{r}", label, bold=True, size=11, color="FFFFFF", bg=NAVY)
+            for k in range(2, D0 + 31):
+                ws.cell(row=r, column=k).fill = fill(NAVY)
+            ws.row_dimensions[r].height = 20
+            continue
+        if label.startswith("="):
+            calc(ws, f"A{r}", label, link=True, wrap=True)
         else:
-            calc(ws, f"B{r}", formula, fmt=FMT_YEN, link=(key == "prev_cash"))
-        F[key] = f"B{r}"
-        put(ws, f"C{r}", "円", border=True, align="center")
-        if memo:
-            note(ws, f"F{r}", memo)
-    ws.conditional_formatting.add(
-        "B52", CellIsRule(operator="notEqual", formula=["0"], fill=fill("F4CCCC")))
+            put(ws, f"A{r}", label, border=True, wrap=True)
+        for k, col in enumerate(day_cols):
+            prev = get_column_letter(D0 + k - 1) if k else None
+            ref = f"{col}{r}"
+            if kind in ("sym", "num", "text"):
+                inp(ws, ref, fmt=fmt, align="center" if kind == "sym" else None, wrap=kind == "text")
+            else:
+                calc(ws, ref, day_formula(key, col, prev), fmt=fmt,
+                     link=(key == "top1" or key == "top2" or key == "top3" or (key in ("prev_day", "prev_cash") and k == 0)),
+                     align="center" if key == "prev_day" else None, wrap=kind == "top")
+            if kind in ("text", "top"):
+                ws[ref].alignment = Alignment(vertical="top", wrap_text=True)
+        # 左の列
+        if kind in ("text", "top", "prev"):
+            for col in "BCDE":
+                put(ws, f"{col}{r}", None, border=True, bg=C_EXAMPLE)
+            continue
+        if kind == "sym":
+            put(ws, f"B{r}", None, border=True)
+            calc(ws, f"C{r}", f'=COUNTIF({span(r)},"○")', fmt='0"回"', align="center")
+            put(ws, f"D{r}", None, border=True)
+            calc(ws, f"E{r}", f'=IF(COUNTIF({span(r)},"?*")=0,"",C{r}/COUNTIF({span(r)},"?*"))', fmt=FMT_PCT)
+            continue
+        how, total_fmt = totals.get(key, ("sum", fmt))
+        if how == "sum":
+            calc(ws, f"C{r}", f"=SUM({span(r)})", fmt=total_fmt)
+        elif how == "avg":
+            calc(ws, f"C{r}", f'=IFERROR(AVERAGE({span(r)}),"")', fmt=total_fmt)
+        elif how == "ratio":
+            num = R["gross" if key == "gross_rate" else "op"]
+            calc(ws, f"C{r}", f'=IF(N(C{R["sales"]})=0,"",C{num}/C{R["sales"]})', fmt=total_fmt)
+        elif how == "last":  # 月末時点の残高（この月に入力した最新の残高）
+            calc(ws, f"C{r}", f'=IF(COUNT({span(r)})=0,"",IF({c1}{r}<>"",{c1}{r},{c1}{R["prev_cash"]}))',
+                 fmt=total_fmt)
+        else:
+            put(ws, f"C{r}", None, border=True, bg=C_EXAMPLE)
+        if key in targets:
+            daily, monthly = targets[key]
+            tfmt = FMT_YEN if key in ("sales", "won_amt") else FMT_DEC  # 件数の目標は小数1桁
+            calc(ws, f"B{r}", daily, fmt=tfmt, link=key not in ("won_amt",))
+            calc(ws, f"D{r}", monthly, fmt=tfmt, link=key not in ("won_amt",))
+            calc(ws, f"E{r}", f'=IF(N(D{r})=0,"",C{r}/D{r})', fmt=FMT_PCT)
+        else:
+            for col in "BDE":
+                put(ws, f"{col}{r}", None, border=True, bg=None if how else C_EXAMPLE)
+    note(ws, f"A{last_row + 2}",
+         "提出：メニュー「日報」→「本日の日報を提出」（「提出する日」が空欄なら今日の分）。スクリプトを使わない場合は、"
+         "「提出データ」シートの2行目をコピーし、「日次ログ」の最終行の下に値のみ貼り付け（Ctrl+Shift+V）。"
+         "月末：メニュー「日報」→「月を締めて翌月へ進む」で、このシートを「日報 2026年10月」のように残し、入力欄を空にして翌月に進む。"
+         f"スクリプトを使わない場合は、このシートをコピーして名前を変え、このシートの入力欄（{c0}{in0}:{c1}{in1}）を選んで Delete を押し、"
+         "「対象の月」を翌月にする。売上原価・販管費は経費ログから自動で計算する。",
+         f"{get_column_letter(D0 + 12)}{last_row + 2}", 70)
 
-    # 6. 日課チェック
-    section(ws, 54, "6. 1000億への日課チェック（○＝できた、△＝一部、×＝できなかった）")
-    header(ws, 55, ["日課", "結果（○△×）", "目安", "", "", "やったこと・メモ"])
-    ws.merge_cells("C55:E55")
-    F["habit_res"] = []
-    for i in range(N_HABIT):
-        r = 56 + i
-        calc(ws, f"A{r}", f'={habit_ref("A", i)}&". "&{habit_ref("C", i)}', link=True, wrap=True)
-        inp(ws, f"B{r}", align="center")
-        F["habit_res"].append(f"B{r}")
-        calc(ws, f"C{r}", f'={habit_ref("F", i)}&""', link=True, wrap=True)
-        ws.merge_cells(f"C{r}:E{r}")
-        inp(ws, f"F{r}", wrap=True)
-        ws.row_dimensions[r].height = 28
-    hr0, hr1 = 56, 56 + N_HABIT - 1
-    put(ws, "A72", "日課の達成率", border=True, bold=True)
-    calc(ws, "B72", f'=IF(COUNTIF(A{hr0}:A{hr1},"?*")=0,0,COUNTIF(B{hr0}:B{hr1},"○")/COUNTIF(A{hr0}:A{hr1},"?*"))',
-         fmt=FMT_PCT, align="center", bold=True)
-    F["habit_rate"] = "B72"
-    calc(ws, "C72", f'="○ "&COUNTIF(B{hr0}:B{hr1},"○")&"　△ "&COUNTIF(B{hr0}:B{hr1},"△")'
-                    f'&"　× "&COUNTIF(B{hr0}:B{hr1},"×")', align="center")
-    ws.merge_cells("C72:E72")
-    note(ws, "F72", "○の数÷日課の数")
-
-    # 7. 振り返り
-    section(ws, 74, "7. 振り返り（KPT）と明日の計画")
-    kpt = [
-        ("result", "今日いちばんの成果（数字で）", 36),
-        ("keep", "Keep：うまくいった・続けること", 48),
-        ("problem", "Problem：課題・うまくいかなかったこと", 48),
-        ("try", "Try：次に試すこと", 48),
-        ("learn", "学び・気づき", 36),
-        ("n1", "明日のTop3 ①（最重要）", 24),
-        ("n2", "明日のTop3 ②", 24),
-        ("n3", "明日のTop3 ③", 24),
-        ("consult", "相談したいこと・決めること", 36),
-    ]
-    for i, (key, label, h) in enumerate(kpt):
-        r = 75 + i
-        put(ws, f"A{r}", label, border=True, wrap=True)
-        inp(ws, f"B{r}", wrap=True)
-        ws[f"B{r}"].alignment = Alignment(vertical="top", wrap_text=True)
-        ws.merge_cells(f"B{r}:F{r}")
-        ws.row_dimensions[r].height = h
-        F[key] = f"B{r}"
-    F["next"] = [F.pop("n1"), F.pop("n2"), F.pop("n3")]
-    note(ws, "A85", "提出：メニュー「日報」→「本日の日報を提出」。日次ログに1行追加され、入力欄を空にして翌日の日付に進められる。"
-         "スクリプトを入れていない場合は「提出データ」シートの2行目をコピーし、「日次ログ」の最終行の下に値のみ貼り付け（Ctrl+Shift+V）。"
-         "提出した日報は「月間日報」に1日1列で並び、1か月分をまとめて見返せる。",
-         "F85", 54)
-
-    # 入力規則・条件付き書式
-    list_validation(ws, '"1,2,3,4,5"', ["B7"])
-    list_validation(ws, '"○,△,×"', ["B12:B14", f"B{hr0}:B{hr1}"])
-    nonneg_validation(ws, ["B27:B34", "B38", "B48:B49", "B51"])
-    status_colors(ws, f"B12:B14 B{hr0}:B{hr1}")
-    for rng in ("E19:E21", "E27:E33"):
+    # 入力規則
+    list_validation(ws, '"○,△,×"', [f"{c0}{R['t1r']}:{c1}{R['t3r']}", f"{c0}{h1}:{c1}{h16}"])
+    list_validation(ws, '"1,2,3,4,5"', [span(R["health"])])
+    nonneg_validation(ws, [f"{c0}{R['sales']}:{c1}{R['referral']}", f"{c0}{R['cash_in']}:{c1}{R['cash']}"])
+    # 条件付き書式
+    status_colors(ws, f"{c0}{R['t1r']}:{c1}{R['t3r']} {c0}{h1}:{c1}{h16}")
+    for dow, color in (("土", "1155CC"), ("日", "C00000")):
         ws.conditional_formatting.add(
-            rng, CellIsRule(operator="greaterThanOrEqual", formula=["1"], fill=fill("D9EAD3")))
+            f"{c0}3:{c1}4", FormulaRule(formula=[f'{c0}$4="{dow}"'], font=Font(color=color, bold=True)))
+    ws.conditional_formatting.add(  # 提出する日（空欄なら今日）の列
+        f"{c0}3:{c1}4", FormulaRule(formula=[f'{c0}$3=IF(ISNUMBER($E$2),$E$2,TODAY())'], fill=fill("FFE599")))
+    runs, start = [], None
+    for r in range(7, last_row + 2):
+        if r in bands or r > last_row:
+            if start is not None:
+                runs.append(f"{c0}{start}:{c1}{r - 1}")
+            start = None
+        elif start is None:
+            start = r
+    ws.conditional_formatting.add(  # 月の日数を超える列（31日がない月など）
+        " ".join(runs), FormulaRule(formula=[f'{c0}$3=""'], fill=fill("EFEFEF")))
+    for key in targets:  # 1日の目標に届いた日
+        r = R[key]
+        ws.conditional_formatting.add(
+            span(r), FormulaRule(formula=[f"AND(ISNUMBER({c0}{r}),N($B{r})>0,{c0}{r}>=$B{r})"], fill=fill("D9EAD3")))
+    r = R["cash_diff"]
     ws.conditional_formatting.add(
-        "B72", CellIsRule(operator="greaterThanOrEqual", formula=["0.8"], fill=fill("D9EAD3")))
-    widths(ws, {"A": 34, "B": 16, "C": 7, "D": 16, "E": 11, "F": 48})
-    ws.freeze_panes = "A4"
+        span(r), FormulaRule(formula=[f"AND(ISNUMBER({c0}{r}),{c0}{r}<>0)"], fill=fill("F4CCCC")))
+    e0, e1 = R["sales"], R["referral"]
+    ws.conditional_formatting.add(
+        f"E{e0}:E{e1}", FormulaRule(formula=[f"AND(ISNUMBER(E{e0}),E{e0}>=1)"], fill=fill("D9EAD3")))
+    ws.conditional_formatting.add(
+        f"E{h1}:E{h16}",
+        ColorScaleRule(start_type="num", start_value=0, start_color="F4CCCC",
+                       mid_type="num", mid_value=0.5, mid_color="FFF2CC",
+                       end_type="num", end_value=1, end_color="B7E1CD"))
+    widths(ws, {"A": 32, "B": 10, "C": 11, "D": 11, "E": 7})
+    for col in day_cols:
+        ws.column_dimensions[col].width = 12
+    ws.freeze_panes = f"{c0}6"
     ws.sheet_properties.tabColor = "F1C232"
-    ws.page_setup.orientation = "portrait"
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.orientation = "landscape"
 
     # ============================================================ 日次ログ / 提出データ
-    cols = log_columns()
-    L = {key: get_column_letter(i + 1) for i, (key, *_rest) in enumerate(cols)}
-    assert [L["n1"], L["n2"], L["n3"]] == next_cols, L
-    assert L["sales"] == "J" and L["cash"] == "Q", L
-    last_col = get_column_letter(len(cols))
+    last_col = get_column_letter(len(LOG_COLS))
+    days_ref = lambda r: f"{q(S_DAYS)}!${c0}${r}:${c1}${r}"  # noqa: E731
+    pos = f"MATCH($A$2,{q(S_DAYS)}!${c0}$3:${c1}$3,0)"  # 提出する日が月間日報の何列目か
+
+    def sub_formula(key):
+        """提出データ2行目：月間日報の「提出する日」の列から1日分を取り出す。"""
+        if key == "date":
+            return f"=IF(ISNUMBER({q(S_DAYS)}!$E$2),{q(S_DAYS)}!$E$2,TODAY())"
+        if key == "dow":
+            return f'=IFERROR(INDEX({days_ref(4)},{pos}),"")'
+        if key == "year":
+            return f'=MIN(10,IFERROR(DATEDIF({SET["start"]},$A$2,"Y")+1,1))'
+        if key == "submitted":
+            return "=NOW()"
+        cell = f"INDEX({days_ref(ROW[key])},{pos})"
+        if key in TEXT_KEYS:
+            return f'=IFERROR({cell}&"","")'
+        if key in ("health", "cash"):
+            return f'=IFERROR(IF({cell}="","",{cell}),"")'
+        return f'=IFERROR({cell},"")'
 
     def habit_header(i):
         return f'={habit_ref("A", i, True)}&" "&{habit_ref("D", i, True)}'
@@ -757,7 +800,7 @@ def build():
     for i, s in enumerate(pattern):
         example[f"h{i + 1}"] = s
     example["habit_rate"] = pattern.count("○") / N_HABIT
-    for i, (key, label, formula, fmt, width) in enumerate(cols):
+    for key, label, fmt, width in LOG_COLS:
         col = L[key]
         if key.startswith("h") and key[1:].isdigit():
             header_value = habit_header(int(key[1:]) - 1)
@@ -771,199 +814,29 @@ def build():
             border=True, align="center" if width <= 8 else None)
         if fmt:
             ws.column_dimensions[col].number_format = fmt
-        calc(ws_sub, f"{col}2", formula, fmt=fmt, link=True)
+        calc(ws_sub, f"{col}2", sub_formula(key), fmt=fmt, link=True)
     ws.row_dimensions[2].height = 45
     ws.freeze_panes = "B3"
     ws.sheet_properties.tabColor = "808080"
 
     ws = ws_sub
     ws.row_dimensions[1].height = 45
-    note(ws, "A4", "このシートは自動作成（編集しない）。Apps Scriptの「本日の日報を提出」は、この2行目を日次ログに書き込む。"
-         "スクリプトを使わない場合は、2行目（A2〜" + last_col + "2）をコピーし、「日次ログ」の最終行の下に"
-         "値のみ貼り付け（Ctrl+Shift+V）する。日付が数字で表示されたら、日次ログのA列を選んで「表示形式」→「数字」→「日付」にする。", "P4", 44)
+    note(ws, "A4", "このシートは自動作成（編集しない）。2行目は「月間日報」の「提出する日」（空欄なら今日）の列の内容。"
+         "Apps Scriptの「本日の日報を提出」は、この2行目を日次ログに書き込む。スクリプトを使わない場合は、2行目（A2〜" + last_col
+         + "2）をコピーし、「日次ログ」の最終行の下に値のみ貼り付け（Ctrl+Shift+V）する。"
+         "日付が数字で表示されたら、日次ログのA列を選んで「表示形式」→「数字」→「日付」にする。", "P4", 44)
     ws.freeze_panes = "B1"
     ws.sheet_properties.tabColor = "808080"
 
-    # 名前付き範囲（Apps Script が日付セルを探すため）
-    wb.defined_names["REPORT_DATE"] = DefinedName(
-        "REPORT_DATE", attr_text=f"{q(S_FORM)}!$B$5")
-
-    # ============================================================ 月間日報
-    # 提出した日報（日次ログ）を、本日の日報と同じ項目の並びで1日1列にし、1か月分を1シートに表示する。
-    ws = ws_days
-    D0 = 5  # 1日目の列（E列）。E〜AI列に1日〜31日を並べる
-    day_cols = [get_column_letter(D0 + k) for k in range(31)]
-    c0, c1 = day_cols[0], day_cols[-1]
-    PCT_DAY = '0%;▲0%;"-"'
-
-    def span(r):
-        return f"{c0}{r}:{c1}{r}"
-
-    def pull(key, col):
-        src = f"{q(S_LOG)}!${L[key]}:${L[key]}"
-        return f'=IF({col}$5="","",IF(INDEX({src},{col}$5)="","",INDEX({src},{col}$5)))'
-
-    title(ws, "A1", "月間日報（1か月分の日報）", "D1")
-    note(ws, f"{c0}1", "「本日の日報」で提出した日報が、1日1列で自動で並ぶ（このシートには入力しない）。"
-         "提出していない日は空欄。月計・月目標・達成率は、表示している月の分。", f"{c1}1")
-    put(ws, "A2", "表示する月", border=True, bold=True)
-    inp(ws, "B2", fmt=FMT_DATE, align="center")
-    dv = DataValidation(type="date", operator="greaterThan", formula1="1", allow_blank=True)
-    dv.error = "日付を入力してください（例：2026/10/1）"
-    dv.errorTitle = "入力エラー"
-    ws.add_data_validation(dv)
-    dv.add("B2")
-    form_date = f"{q(S_FORM)}!$B$5"
-    calc(ws, "C2", f"=IF(ISNUMBER($B$2),DATE(YEAR($B$2),MONTH($B$2),1),"
-                   f"IF(ISNUMBER({form_date}),DATE(YEAR({form_date}),MONTH({form_date}),1),"
-                   f"DATE(YEAR(TODAY()),MONTH(TODAY()),1)))",
-         fmt='yyyy"年"m"月"', link=True, align="center", bold=True)
-    calc(ws, "D2", f'=MIN(10,IFERROR(DATEDIF({SET["start"]},$C$2,"Y")+1,1))', fmt='0"年目"',
-         link=True, align="center")
-    note(ws, f"{c0}2", "B2が空欄なら「本日の日報」の日付の月を表示する。ほかの月はB2にその月の日付を入力（例：2026/10/1）。"
-         "月ごとに残したいときは、このシートをコピーしてB2にその月の日付を入れる。", f"{c1}2", 28)
-
-    header(ws, 3, ["項目", "月計", "月目標", "達成率"])
-    header(ws, 4, ["曜日", "", "", ""])
-    put(ws, "A5", "日報の提出（○＝提出済み）", border=True, bold=True)
-    calc(ws, "B5", f"=COUNT({span(5)})", fmt='0"日"', align="center", bold=True)
-    put(ws, "C5", None, border=True)
-    put(ws, "D5", None, border=True)
-    for k, col in enumerate(day_cols):
-        prev = get_column_letter(D0 + k - 1)
-        day = "=$C$2" if k == 0 else f'=IF({prev}3="","",IF(MONTH({prev}3+1)<>MONTH({prev}3),"",{prev}3+1))'
-        put(ws, f"{col}3", day, bold=True, color=NAVY, bg=C_HEAD, align="center", border=True, fmt="m/d")
-        put(ws, f"{col}4", f'=IF({col}3="","",CHOOSE(WEEKDAY({col}3),"日","月","火","水","木","金","土"))',
-            bold=True, color=NAVY, bg=C_HEAD, align="center", border=True)
-        # 日次ログの行番号（提出済みなら○と表示する）
-        calc(ws, f"{col}5", f'=IF({col}3="","",IFERROR(MATCH({col}3,{log_a},0),""))', fmt='"○";;',
-             link=True, align="center")
-
-    # (種類, 日次ログのキー, 見出し, …)
-    #   val: 数値（書式, 月計の種類, 月目標）  sym: ○△×（達成率の分母）  ratio: 率（分子キー, 分母キー）  text: 文章
-    log_cash = f"{q(S_LOG)}!${L['cash']}:${L['cash']}"
-    spec = [
-        ("sec", "1. 基本情報"),
-        ("val", "health", "体調（1〜5）", "0", "avg", None),
-        ("text", "theme", "今日のテーマ"),
-        ("sec", "2. 今日のTop3の結果（○△×）"),
-        ("sym", "t1r", "Top3 ①（最重要）", "marked"),
-        ("sym", "t2r", "Top3 ②", "marked"),
-        ("sym", "t3r", "Top3 ③", "marked"),
-        ("val", "toprate", "Top3の実行率", PCT_DAY, "avg", None),
-        ("sec", "3. 日次決算（円）"),
-        ("val", "sales", "売上高", FMT_YEN, "sum", f"=INDEX({plan_d},$D$2)*10^8/12"),
-        ("val", "cogs", "売上原価", FMT_YEN, "sum", None),
-        ("val", "gross", "粗利", FMT_YEN, "sum", None),
-        ("ratio", "gross_rate", "粗利率", "gross", "sales"),
-        ("val", "sga", "販管費", FMT_YEN, "sum", None),
-        ("val", "op", "営業利益", FMT_YEN, "sum", None),
-        ("ratio", "op_rate", "営業利益率", "op", "sales"),
-        ("val", "cash_in", "入金額", FMT_YEN, "sum", None),
-        ("val", "cash_out", "出金額", FMT_YEN, "sum", None),
-        ("val", "cash", "現預金残高（月計は月末時点）", FMT_YEN, "last", None),
-        ("sec", "4. 営業実績"),
-        ("val", "approach", "新規アプローチ数", FMT_CNT, "sum", f"=INDEX({plan('K')},$D$2)/12"),
-        ("val", "appo", "アポ獲得数", FMT_CNT, "sum", None),
-        ("val", "meeting", "商談数", FMT_CNT, "sum", f"=INDEX({plan('J')},$D$2)/12"),
-        ("val", "proposal", "提案・見積の提出数", FMT_CNT, "sum", None),
-        ("val", "won", "受注数", FMT_CNT, "sum", f"=INDEX({plan('I')},$D$2)/12"),
-        ("val", "won_amt", "受注金額", FMT_YEN, "sum", "sales"),
-        ("val", "existing", "既存顧客との面談・連絡", FMT_CNT, "sum", f'={SET["exist"]}*DAY(EOMONTH($C$2,0))'),
-        ("val", "referral", "紹介でもらった見込み客", FMT_CNT, "sum", None),
-        ("sec", "5. 1000億への日課（○△×）"),
-        *[("sym", f"h{i + 1}", f'={habit_ref("A", i)}&" "&{habit_ref("D", i)}', "submitted")
-          for i in range(N_HABIT)],
-        ("val", "habit_rate", "日課の達成率", PCT_DAY, "avg", None),
-        ("sec", "6. 振り返り（KPT）"),
-        ("text", "result", "今日いちばんの成果"),
-        ("text", "keep", "Keep：続けること"),
-        ("text", "problem", "Problem：課題"),
-        ("text", "try", "Try：次に試すこと"),
-        ("text", "learn", "学び・気づき"),
-        ("sec", "7. 明日の計画"),
-        ("text", "n1", "明日のTop3 ①（最重要）"),
-        ("text", "n2", "明日のTop3 ②"),
-        ("text", "n3", "明日のTop3 ③"),
-        ("text", "consult", "相談・決めること"),
-    ]
-    R = {}
-    r = 6
-    for item in spec:
-        kind = item[0]
-        if kind == "sec":
-            section(ws, r, item[1], "A", c1)
-            r += 1
-            continue
-        key, label = item[1], item[2]
-        R[key] = r
-        if label.startswith("="):
-            calc(ws, f"A{r}", label, link=True)
-        else:
-            put(ws, f"A{r}", label, border=True)
-        if kind == "ratio":
-            num, den = R[item[3]], R[item[4]]
-            for col in day_cols:
-                calc(ws, f"{col}{r}", f'=IF(N({col}{den})=0,"",N({col}{num})/{col}{den})', fmt=PCT_DAY)
-            calc(ws, f"B{r}", f'=IF(N(B{den})=0,"",B{num}/B{den})', fmt=FMT_PCT)
-            put(ws, f"C{r}", None, border=True)
-            put(ws, f"D{r}", None, border=True)
-            r += 1
-            continue
-        fmt = item[3] if kind == "val" else None
-        for col in day_cols:
-            c = calc(ws, f"{col}{r}", pull(key, col), fmt=fmt, link=True,
-                     align="center" if kind == "sym" else None)
-            if kind == "text":
-                c.alignment = Alignment(vertical="top", wrap_text=True)
-        if kind == "val":
-            summary, target = item[4], item[5]
-            total = {
-                "sum": f"=SUM({span(r)})",
-                "avg": f'=IFERROR(AVERAGE({span(r)}),"")',
-                "last": (f'=IFERROR(INDEX({log_cash},MATCH(_xlfn.MAXIFS({log_a},{log_a},">="&$C$2,'
-                         f'{log_a},"<="&EOMONTH($C$2,0),{log_cash},"<>"),{log_a},0)),"")'),
-            }[summary]
-            calc(ws, f"B{r}", total, fmt=FMT_PCT if fmt == PCT_DAY else fmt, link=summary == "last")
-            if target == "sales":
-                target = f"=C{R['sales']}"
-            if target:
-                calc(ws, f"C{r}", target, fmt=FMT_YEN if fmt == FMT_YEN else FMT_DEC, link=True)
-                calc(ws, f"D{r}", f'=IF(N(C{r})=0,"",B{r}/C{r})', fmt=FMT_PCT)
-            else:
-                put(ws, f"C{r}", None, border=True)
-                put(ws, f"D{r}", None, border=True)
-        elif kind == "sym":
-            calc(ws, f"B{r}", f'=COUNTIF({span(r)},"○")', fmt='0"回"', align="center")
-            put(ws, f"C{r}", None, border=True)
-            base = f'COUNTIF({span(r)},"?*")' if item[3] == "marked" else "$B$5"
-            calc(ws, f"D{r}", f'=IF({base}=0,"",B{r}/{base})', fmt=FMT_PCT)
-        else:
-            for col in "BCD":
-                put(ws, f"{col}{r}", None, border=True, bg=C_EXAMPLE)
-        r += 1
-    note(ws, f"A{r + 1}", "このシートは「日次ログ」から自動で表示している（入力しない）。"
-         "Top3の達成率は○の数÷結果を入れた日数、日課の達成率は○の数÷日報を提出した日数。"
-         "売上原価・販管費は提出した時点の値（あとで経費ログを直した分は「月次集計」に反映される）。",
-         f"{get_column_letter(D0 + 10)}{r + 1}", 42)
-
-    status_colors(ws, f"{c0}{R['t1r']}:{c1}{R['t3r']} {c0}{R['h1']}:{c1}{R[f'h{N_HABIT}']}")
-    for dow, color in (("土", "1155CC"), ("日", "C00000")):
-        ws.conditional_formatting.add(
-            f"{c0}3:{c1}4", FormulaRule(formula=[f'{c0}$4="{dow}"'], font=Font(color=color, bold=True)))
-    d0, d1 = R["sales"], R["referral"]
-    ws.conditional_formatting.add(
-        f"D{d0}:D{d1}", FormulaRule(formula=[f"AND(ISNUMBER(D{d0}),D{d0}>=1)"], fill=fill("D9EAD3")))
-    ws.conditional_formatting.add(
-        f"D{R['h1']}:D{R[f'h{N_HABIT}']}",
-        ColorScaleRule(start_type="num", start_value=0, start_color="F4CCCC",
-                       mid_type="num", mid_value=0.5, mid_color="FFF2CC",
-                       end_type="num", end_value=1, end_color="B7E1CD"))
-    widths(ws, {"A": 28, "B": 11, "C": 11, "D": 8})
-    for col in day_cols:
-        ws.column_dimensions[col].width = 12
-    ws.freeze_panes = "E6"
-    ws.page_setup.orientation = "landscape"
+    # 名前付き範囲（Apps Script が月間日報の場所を知るため）
+    for name, ref in {
+        "REPORT_DATE": f"{q(S_DAYS)}!$E$2",
+        "REPORT_MONTH": f"{q(S_DAYS)}!$B$2",
+        "DATE_ROW": f"{q(S_DAYS)}!${c0}$3:${c1}$3",
+        "SUBMIT_ROW": f"{q(S_DAYS)}!${c0}$5:${c1}$5",
+        "INPUT_BLOCK": f"{q(S_DAYS)}!${c0}${in0}:${c1}${in1}",
+    }.items():
+        wb.defined_names[name] = DefinedName(name, attr_text=ref)
 
     # ============================================================ 経費ログ
     ws = ws_exp
@@ -981,7 +854,7 @@ def build():
     ws.column_dimensions["A"].number_format = FMT_DATE
     ws.column_dimensions["D"].number_format = FMT_YEN
     note(ws, "I2", f"日付・勘定科目・金額は必須。科目が「{COGS_PREFIX}」で始まる費用は売上原価、それ以外は販管費になる。"
-         "本日の日報の売上原価・販管費と、月次集計に自動で反映される。「記入例」の行は集計されない。", "I6")
+         "月間日報の売上原価・販管費と、月次集計に自動で反映される。「記入例」の行は集計されない。", "I6")
     widths(ws, {"A": 12, "B": 20, "C": 30, "D": 14, "E": 16, "F": 8, "G": 30, "H": 3, "I": 40})
     ws.freeze_panes = "A3"
     ws.sheet_properties.tabColor = "F1C232"
@@ -1191,82 +1064,98 @@ def build():
     # ============================================================ 使い方
     ws = ws_howto
     title(ws, "A1", "日報・日次決算テンプレート（年商1000億円への10年計画）", "C1")
-    note(ws, "A2", "毎日、日報・営業実績・日次決算・日課チェックを1枚に入力して提出し、日次ログにためる。"
-         "月間日報・月次集計・10年計画は、ためたデータから自動で集計される。", "C2", 30)
-    section(ws, 4, "毎日の流れ", "A", "C")
+    note(ws, "A2", "毎日、「月間日報」のその日の列に日報・営業実績・日次決算・日課チェックを入力して提出し、日次ログにためる。"
+         "1か月分は月間日報の1シートにまとまり、月次集計と10年計画は、ためたデータから自動で集計される。", "C2", 30)
+    r = 4
+    section(ws, r, "毎日の流れ", "A", "C")
     flow = [
-        ("1. 朝", "「本日の日報」で日付を確認し、前回決めた今日のTop3と売上目標を見る。「毎日やること」で今日の行動を決める。"),
+        ("1. 朝", "「月間日報」で今日の列を見る。今日のTop3（前回の日報で決めたこと）は自動で表示され、1日の目標は左の列にある。"
+                 "「毎日やること」で今日の行動を決める。"),
         ("2. 日中", "費用が出たら「経費ログ」に1件1行で記録する。商談が動いたら「案件パイプライン」のフェーズと次のアクションを更新する。"),
-        ("3. 夜", "「本日の日報」の薄い黄色のセルに、売上・営業実績・日課の結果・振り返り（KPT）・明日のTop3を入力する。売上原価・販管費・利益は経費ログから自動で計算される。"),
-        ("4. 提出", "メニュー「日報」→「本日の日報を提出」を押す（Apps Scriptの設定が必要。下記3）。スクリプトを使わない場合は「提出データ」シートの2行目をコピーし、「日次ログ」の最終行の下に値のみ貼り付け（Ctrl+Shift+V）。"),
-        ("5. 週に1回", "「月間日報」でその月の日報を1日1列で見返す。「月次集計」で売上・利益・日課の実行率を、「10年計画」で今年の目標との差を確認する。続かない日課は原因を1つ決めて手を打つ。"),
+        ("3. 夜", "「月間日報」の今日の列の薄い黄色のセルに、Top3の結果・体調・売上・営業実績・日課の○△×・振り返り（KPT）・明日のTop3を入力する。"
+                 "売上原価・販管費・利益は経費ログから自動で計算される。"),
+        ("4. 提出", "メニュー「日報」→「本日の日報を提出」を押す（Apps Scriptの設定が必要。下記）。「提出する日」が空欄なら今日の分を日次ログに追加する。"
+                   "スクリプトを使わない場合は「提出データ」シートの2行目をコピーし、「日次ログ」の最終行の下に値のみ貼り付け（Ctrl+Shift+V）。"),
+        ("5. 月末", "メニュー「日報」→「月を締めて翌月へ進む」。その月の月間日報を「日報 2026年10月」のようなシートとして残し、入力欄を空にして翌月に進む。"),
+        ("6. 週に1回", "「月次集計」で売上・利益・日課の実行率を、「10年計画」で今年の目標との差を確認する。続かない日課は原因を1つ決めて手を打つ。"),
     ]
-    for i, (a, b) in enumerate(flow):
-        r = 5 + i
+    for a, b in flow:
+        r += 1
         put(ws, f"A{r}", a, bold=True, border=True, valign="top")
         put(ws, f"B{r}", b, border=True, wrap=True, valign="top")
         ws.merge_cells(f"B{r}:C{r}")
-        ws.row_dimensions[r].height = 48 if a == "5. 週に1回" else 42
-    section(ws, 11, "セルの色", "A", "C")
-    inp(ws, "A12", "入力値")
-    put(ws, "B12", "薄い黄色：入力するセル（青い文字が入力した値）", border=True)
-    put(ws, "A13", "計算値", border=True)
-    put(ws, "B13", "白：自動で計算されるセル（入力しない）", border=True)
-    put(ws, "A14", "参照値", color="008000", border=True)
-    put(ws, "B14", "緑の文字：ほかのシートから参照している値", border=True)
-    for r in (12, 13, 14):
-        ws.merge_cells(f"B{r}:C{r}")
-    section(ws, 16, "最初に1回だけやること", "A", "C")
+        ws.row_dimensions[r].height = 48
+    r += 2
+    section(ws, r, "セルの色", "A", "C")
+    inp(ws, f"A{r + 1}", "入力値")
+    put(ws, f"B{r + 1}", "薄い黄色：入力するセル（青い文字が入力した値）", border=True)
+    put(ws, f"A{r + 2}", "計算値", border=True)
+    put(ws, f"B{r + 2}", "白：自動で計算されるセル（入力しない）", border=True)
+    put(ws, f"A{r + 3}", "参照値", color="008000", border=True)
+    put(ws, f"B{r + 3}", "緑の文字：ほかのシートから参照している値", border=True)
+    for rr in range(r + 1, r + 4):
+        ws.merge_cells(f"B{rr}:C{rr}")
+    r += 5
+    section(ws, r, "最初に1回だけやること", "A", "C")
     first = [
-        ("1", "「設定」シートの薄い黄色のセル（計画開始日、1年目の売上目標、平均受注単価、受注率など）を自分の数字に書き換える。"),
-        ("2", "「毎日やること」の項目と目安を、自分の事業に合わせて見直す（本日の日報・日次ログ・月次集計に自動で反映される）。"),
-        ("3", "提出ボタンを使う場合は、メニュー「拡張機能」→「Apps Script」を開き、最初からあるコードを消して、提出スクリプト（Googleドライブの「日報 提出スクリプト（Apps Script用）」、またはGitHubの daily-report/gas/Code.gs）を貼り付けて保存する。シートを再読み込みするとメニューに「日報」が表示される。初回だけGoogleの承認画面が出るので、自分のアカウントで許可する。"),
-        ("4", "提出時にメールも送る場合は「設定」の提出先メールアドレスを入力する。毎晩の未提出リマインドは、メニュー「日報」→「毎日のリマインドを設定」。"),
+        "「ファイル」→「設定」で、タイムゾーンを「(GMT+09:00) Tokyo」にする（今日の日付と提出日時の基準）。",
+        "「設定」シートの薄い黄色のセル（計画開始日、1年目の売上目標、平均受注単価、受注率など）を自分の数字に書き換える。",
+        "「月間日報」の「対象の月」を今月にする。",
+        "「毎日やること」の項目と目安を、自分の事業に合わせて見直す（月間日報・日次ログ・月次集計に自動で反映される）。",
+        "提出ボタンを使う場合は、メニュー「拡張機能」→「Apps Script」を開き、最初からあるコードを消して、提出スクリプト（daily-report/gas/Code.gs）を"
+        "貼り付けて保存する。シートを再読み込みするとメニューに「日報」が表示される。初回だけGoogleの承認画面が出るので、自分のアカウントで許可する。",
+        "提出時にメールも送る場合は「設定」の提出先メールアドレスを入力する。毎晩の未提出リマインドは、メニュー「日報」→「毎日のリマインドを設定」。",
     ]
-    for i, (a, b) in enumerate(first):
-        r = 17 + i
-        put(ws, f"A{r}", a, border=True, align="center", valign="top")
-        put(ws, f"B{r}", b, border=True, wrap=True, valign="top")
+    for i, text in enumerate(first):
+        r += 1
+        put(ws, f"A{r}", str(i + 1), border=True, align="center", valign="top")
+        put(ws, f"B{r}", text, border=True, wrap=True, valign="top")
         ws.merge_cells(f"B{r}:C{r}")
-        ws.row_dimensions[r].height = 60 if a == "3" else 32
-    section(ws, 22, "シートの一覧", "A", "C")
-    header(ws, 23, ["シート", "役割", "いつ入力するか"])
+        ws.row_dimensions[r].height = 60 if len(text) > 90 else 32
+    r += 2
+    section(ws, r, "シートの一覧", "A", "C")
+    header(ws, r + 1, ["シート", "役割", "いつ入力するか"])
+    r += 1
     sheets = [
-        (S_FORM, "毎日の入力画面。日報・営業実績・日次決算・日課チェック", "毎日"),
-        (S_DAYS, "提出した日報を1か月分、1日1列で表示（月計・月目標・達成率つき）", "見るだけ（表示する月は変更可）"),
+        (S_DAYS, "毎日の入力画面。1日1列で1か月分（日報・営業実績・日次決算・日課チェック・振り返り）", "毎日"),
+        ("日報 2026年10月など", "月を締めたときに残る、その月の月間日報", "見るだけ"),
         (S_HABIT, "年商1000億に向けて毎日やることの一覧と理由", "必要に応じて見直す"),
-        (S_EXP, "費用を1件1行で記録。日次決算と月次集計に反映", "費用が出たとき"),
+        (S_EXP, "費用を1件1行で記録。月間日報の日次決算と月次集計に反映", "費用が出たとき"),
         (S_DEAL, "案件ごとのフェーズ・見込金額・次のアクション", "商談が動いたとき"),
         (S_MONTH, "月ごとの売上・利益・営業数字・日課の実行率", "見るだけ（表示する年目は変更可）"),
         (S_PLAN, "1〜10年目の売上目標と実績、必要な件数と人数の逆算", "見るだけ（重点テーマは書き換え可）"),
-        (S_LOG, "提出した日報が1日1行でたまる記録", "提出時に自動"),
+        (S_LOG, "提出した日報が1日1行でたまる記録（月次集計・10年計画の元データ）", "提出時に自動"),
         (S_SUBMIT, "日次ログに送る1行分のデータ（自動作成）", "触らない"),
         (S_SET, "目標・前提条件・選択肢のリスト", "最初に1回（毎月見直す）"),
     ]
-    for i, (a, b, c) in enumerate(sheets):
-        r = 24 + i
-        put(ws, f"A{r}", a, border=True, bold=True)
+    for a, b, c in sheets:
+        r += 1
+        put(ws, f"A{r}", a, border=True, bold=True, wrap=True)
         put(ws, f"B{r}", b, border=True, wrap=True)
         put(ws, f"C{r}", c, border=True, wrap=True)
-    section(ws, 35, "補足", "A", "C")
+    r += 2
+    section(ws, r, "補足", "A", "C")
     notes = [
         "日次ログ・経費ログ・案件パイプラインの「記入例」の行は集計されない。不要なら行ごと削除してよい。",
+        "月次集計と10年計画は、提出した日報（日次ログ）から集計する。月間日報に入力しても、提出していない日は入らない。",
         "経費は経費ログが正本。提出後に経費を追加・修正しても月次集計には反映される（日次ログの費用欄は提出時点の記録）。",
-        "目標の数字（仮の値）は設定シートで変更できる。変更すると10年計画・本日の日報・月次集計が連動する。",
+        "目標の数字（仮の値）は設定シートで変更できる。変更すると10年計画・月間日報・月次集計が連動する。",
         "同じ日付の日報をもう一度提出すると、上書きするか確認が出る。",
+        "スクリプトを使わずに月を締めるときは、月間日報のシートをコピーして名前を「日報 2026年10月」のように変え、"
+        f"月間日報の入力欄（{c0}{in0}:{c1}{in1}）を選んで Delete を押し、「対象の月」を翌月にする。",
     ]
-    for i, t in enumerate(notes):
-        r = 36 + i
+    for t in notes:
+        r += 1
         put(ws, f"A{r}", "・", align="right", valign="top")
         put(ws, f"B{r}", t, wrap=True, valign="top")
         ws.merge_cells(f"B{r}:C{r}")
-        ws.row_dimensions[r].height = 28
-    widths(ws, {"A": 16, "B": 60, "C": 34})
+        ws.row_dimensions[r].height = 28 if len(t) < 60 else 42
+    widths(ws, {"A": 18, "B": 60, "C": 34})
     ws.sheet_properties.tabColor = NAVY
 
-    wb.active = wb.sheetnames.index(S_FORM)
+    wb.active = wb.sheetnames.index(S_DAYS)
     for s in wb.worksheets:
-        s.sheet_view.tabSelected = s.title == S_FORM
+        s.sheet_view.tabSelected = s.title == S_DAYS
     return wb, L
 
 

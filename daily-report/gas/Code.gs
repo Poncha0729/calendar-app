@@ -14,20 +14,26 @@
  *   6. 初回の実行時だけ承認画面が出るので、自分のアカウントを選んで許可する
  *
  * メニュー「日報」:
- *   本日の日報を提出        … 「提出データ」2行目を「日次ログ」に1行保存（同じ日付があれば上書き確認）。
- *                              設定シートに提出先メールアドレスがあればメールも送る
- *   入力欄を空にして翌日へ進む … 「本日の日報」の入力欄（薄い黄色のセル）を空にし、日付を翌日にする
+ *   本日の日報を提出        … 「月間日報」の「提出する日」（空欄なら今日）の列を「日次ログ」に1行保存する
+ *                              （同じ日付があれば上書き確認）。設定シートに提出先メールアドレスがあればメールも送る
+ *   月を締めて翌月へ進む    … 「月間日報」を「日報 2026年10月」のようなシートとして残し、入力欄を空にして翌月にする
  *   毎日のリマインドを設定    … 設定シートの「リマインドの時刻」に、その日の日報が未提出ならメールで知らせる
  *   リマインドを解除
  */
 
-const SHEET_FORM = '本日の日報';
+const SHEET_MAIN = '月間日報';
 const SHEET_SUBMIT = '提出データ';
 const SHEET_LOG = '日次ログ';
 const SHEET_SETTINGS = '設定';
-const DATE_RANGE_NAME = 'REPORT_DATE'; // 本日の日報の日付セル（名前付き範囲）
+// 月間日報の場所（名前付き範囲）
+const RANGE_SUBMIT_DATE = 'REPORT_DATE'; // 提出する日（空欄なら今日）
+const RANGE_MONTH = 'REPORT_MONTH'; // 対象の月
+const RANGE_DATES = 'DATE_ROW'; // 1日〜31日の日付の行
+const RANGE_SUBMITTED = 'SUBMIT_ROW'; // 提出済み（○）の行
+const RANGE_INPUTS = 'INPUT_BLOCK'; // 入力欄（薄い黄色のセル）の範囲
 const INPUT_BACKGROUND = '#fff2cc'; // 入力セルの背景色
 const LOG_FIRST_ROW = 3; // 日次ログのデータ開始行（1〜2行目は見出し、3行目は記入例）
+const ARCHIVE_PREFIX = '日報 '; // 月を締めたときに残すシートの名前（例：日報 2026年10月）
 const REMINDER_HANDLER = 'remindIfNotSubmitted';
 const DEFAULT_REMINDER_HOUR = 21;
 
@@ -35,7 +41,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('日報')
     .addItem('本日の日報を提出', 'submitDailyReport')
-    .addItem('入力欄を空にして翌日へ進む', 'clearFormForNextDay')
+    .addItem('月を締めて翌月へ進む', 'closeMonth')
     .addSeparator()
     .addItem('毎日のリマインドを設定', 'setupReminder')
     .addItem('リマインドを解除', 'removeReminder')
@@ -47,8 +53,8 @@ function submitDailyReport() {
   const ui = SpreadsheetApp.getUi();
   const submit = ss.getSheetByName(SHEET_SUBMIT);
   const log = ss.getSheetByName(SHEET_LOG);
-  if (!submit || !log) {
-    ui.alert('「' + SHEET_SUBMIT + '」または「' + SHEET_LOG + '」シートが見つかりません。');
+  if (!submit || !log || !ss.getRangeByName(RANGE_DATES)) {
+    ui.alert('「' + SHEET_MAIN + '」「' + SHEET_SUBMIT + '」「' + SHEET_LOG + '」のいずれかが見つかりません。');
     return;
   }
   SpreadsheetApp.flush();
@@ -62,11 +68,21 @@ function submitDailyReport() {
 
   const date = values[0];
   if (!(date instanceof Date) || date.getFullYear() < 2000) {
-    ui.alert('「' + SHEET_FORM + '」の日付を入力してから提出してください。');
+    ui.alert('「' + SHEET_MAIN + '」の「提出する日」を確認してください。');
     return;
   }
   const tz = ss.getSpreadsheetTimeZone();
   const dateText = Utilities.formatDate(date, tz, 'yyyy/MM/dd');
+
+  const col = dayColumn_(ss, date, tz);
+  if (col < 0) {
+    ui.alert(dateText + ' は「' + SHEET_MAIN + '」の対象の月にありません。「提出する日」か「対象の月」を確認してください。');
+    return;
+  }
+  if (!hasInput_(ss, col)) {
+    ui.alert(dateText + ' の列がまだ空です。「' + SHEET_MAIN + '」に入力してから提出してください。');
+    return;
+  }
 
   const existing = findLogRow_(log, date, tz);
   if (existing) {
@@ -100,29 +116,49 @@ function submitDailyReport() {
     }
   }
 
-  const next = ui.alert(
-    '提出しました',
-    dateText + ' の日報を日次ログの ' + target + ' 行目に保存しました。' + mailNote +
-      '\n\n入力欄を空にして、日付を翌日に進めますか？',
-    ui.ButtonSet.YES_NO);
-  if (next === ui.Button.YES) clearForm_(ss, nextDayText_(date, tz));
+  // 「提出する日」を空欄に戻す（次は今日の日付で提出される）
+  const dateCell = ss.getRangeByName(RANGE_SUBMIT_DATE);
+  if (dateCell && dateCell.getValue() !== '') dateCell.clearContent();
+
+  ui.alert('提出しました', dateText + ' の日報を日次ログの ' + target + ' 行目に保存しました。' + mailNote);
 }
 
-function clearFormForNextDay() {
+function closeMonth() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const ui = SpreadsheetApp.getUi();
+  const sheet = ss.getSheetByName(SHEET_MAIN);
+  const monthCell = ss.getRangeByName(RANGE_MONTH);
+  if (!sheet || !monthCell || !ss.getRangeByName(RANGE_INPUTS)) {
+    ui.alert('「' + SHEET_MAIN + '」シートが見つかりません。');
+    return;
+  }
+  const month = monthCell.getValue();
+  if (!(month instanceof Date)) {
+    ui.alert('「' + SHEET_MAIN + '」の「対象の月」を入力してください。');
+    return;
+  }
+  const tz = ss.getSpreadsheetTimeZone();
+  const label = Utilities.formatDate(month, tz, 'yyyy年M月');
+  const name = uniqueSheetName_(ss, ARCHIVE_PREFIX + label);
+  const pending = unsubmittedDays_(ss, tz);
   const answer = ui.alert(
-    '入力欄を空にする',
-    '「' + SHEET_FORM + '」の入力欄（薄い黄色のセル）を空にして、日付を翌日に進めます。' +
-      '提出していない内容は消えます。よろしいですか？',
+    '月を締める',
+    '「' + SHEET_MAIN + '」を「' + name + '」シートとして残し、入力欄を空にして翌月に進みます。' +
+      (pending.length ? '\n\nまだ提出していない日があります：' + pending.join('、') +
+        '\n（提出していない日は、日次ログ・月次集計・10年計画に入りません）' : '') +
+      '\n\nよろしいですか？',
     ui.ButtonSet.YES_NO);
   if (answer !== ui.Button.YES) return;
 
-  const tz = ss.getSpreadsheetTimeZone();
-  const dateCell = ss.getRangeByName(DATE_RANGE_NAME);
-  const current = dateCell ? dateCell.getValue() : null;
-  const base = current instanceof Date ? current : new Date();
-  clearForm_(ss, nextDayText_(base, tz));
+  const copy = sheet.copyTo(ss).setName(name);
+  ss.setActiveSheet(copy);
+  ss.moveActiveSheet(ss.getNumSheets());
+  clearInputs_(ss);
+  const next = nextMonth_(month, tz);
+  monthCell.setValue(next.text);
+  ss.setActiveSheet(sheet);
+  ui.alert('翌月に進みました', label + 'の日報を「' + name + '」シートに残しました。「' + SHEET_MAIN + '」は ' +
+    next.label + ' になりました。');
 }
 
 function setupReminder() {
@@ -154,7 +190,7 @@ function remindIfNotSubmitted() {
     to: to,
     subject: '【日報】' + Utilities.formatDate(today, tz, 'yyyy/MM/dd') + ' の日報がまだ提出されていません',
     body: '今日の日報がまだ提出されていません。\n\n' + ss.getUrl() +
-      '\n\n「' + SHEET_FORM + '」に入力し、メニュー「日報」→「本日の日報を提出」で提出してください。',
+      '\n\n「' + SHEET_MAIN + '」の今日の列に入力し、メニュー「日報」→「本日の日報を提出」で提出してください。',
   });
 }
 
@@ -175,31 +211,74 @@ function findLogRow_(log, date, tz) {
   return 0;
 }
 
-/** 本日の日報の入力欄（数式のない薄い黄色のセル）を空にし、日付セルに nextDate を入れる。 */
-function clearForm_(ss, nextDate) {
-  const form = ss.getSheetByName(SHEET_FORM);
-  const dateCell = ss.getRangeByName(DATE_RANGE_NAME);
-  const dateA1 = dateCell ? dateCell.getA1Notation() : '';
-  const range = form.getDataRange();
-  const backgrounds = range.getBackgrounds();
-  const formulas = range.getFormulas();
-  const targets = [];
-  for (let r = 0; r < backgrounds.length; r++) {
-    for (let c = 0; c < backgrounds[r].length; c++) {
-      if (String(backgrounds[r][c]).toLowerCase() !== INPUT_BACKGROUND || formulas[r][c]) continue;
-      const a1 = columnLetter_(c + 1) + (r + 1);
-      if (a1 !== dateA1) targets.push(a1);
-    }
+/** 月間日報で、指定した日付が何列目か（0始まり）を返す（対象の月になければ -1）。 */
+function dayColumn_(ss, date, tz) {
+  const dates = ss.getRangeByName(RANGE_DATES).getValues()[0];
+  const key = Utilities.formatDate(date, tz, 'yyyyMMdd');
+  for (let c = 0; c < dates.length; c++) {
+    if (dates[c] instanceof Date && Utilities.formatDate(dates[c], tz, 'yyyyMMdd') === key) return c;
   }
-  if (targets.length) form.getRangeList(targets).clearContent();
-  if (dateCell && nextDate) dateCell.setValue(nextDate);
+  return -1;
 }
 
-/** 日付の翌日を 'yyyy-MM-dd' の文字列で返す（セルに入れると日付として扱われる）。 */
-function nextDayText_(date, tz) {
-  const parts = Utilities.formatDate(date, tz, 'yyyy-MM-dd').split('-').map(Number);
-  const next = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2] + 1));
-  return Utilities.formatDate(next, 'UTC', 'yyyy-MM-dd');
+/** 月間日報の入力欄で、指定した列に1つでも入力があるか。 */
+function hasInput_(ss, col) {
+  return ss.getRangeByName(RANGE_INPUTS).getValues().some(function (row) { return row[col] !== ''; });
+}
+
+/** 入力があるのに日次ログに提出していない日（例：10/5）の一覧。 */
+function unsubmittedDays_(ss, tz) {
+  const dates = ss.getRangeByName(RANGE_DATES).getValues()[0];
+  const done = ss.getRangeByName(RANGE_SUBMITTED).getValues()[0];
+  const inputs = ss.getRangeByName(RANGE_INPUTS).getValues();
+  const days = [];
+  for (let c = 0; c < dates.length; c++) {
+    if (!(dates[c] instanceof Date) || done[c] !== '') continue;
+    if (inputs.some(function (row) { return row[c] !== ''; })) days.push(Utilities.formatDate(dates[c], tz, 'M/d'));
+  }
+  return days;
+}
+
+/** 月間日報の入力欄（数式のない薄い黄色のセル）と「提出する日」を空にする。 */
+function clearInputs_(ss) {
+  const block = ss.getRangeByName(RANGE_INPUTS);
+  const sheet = block.getSheet();
+  const backgrounds = block.getBackgrounds();
+  const formulas = block.getFormulas();
+  const targets = [];
+  for (let r = 0; r < backgrounds.length; r++) {
+    let start = -1;
+    for (let c = 0; c <= backgrounds[r].length; c++) {
+      const input = c < backgrounds[r].length &&
+        String(backgrounds[r][c]).toLowerCase() === INPUT_BACKGROUND && !formulas[r][c];
+      if (input && start < 0) start = c;
+      if (!input && start >= 0) {
+        const rowNo = block.getRow() + r;
+        targets.push(columnLetter_(block.getColumn() + start) + rowNo + ':' +
+          columnLetter_(block.getColumn() + c - 1) + rowNo);
+        start = -1;
+      }
+    }
+  }
+  if (targets.length) sheet.getRangeList(targets).clearContent();
+  const dateCell = ss.getRangeByName(RANGE_SUBMIT_DATE);
+  if (dateCell) dateCell.clearContent();
+}
+
+/** 翌月の1日（セルに入れる 'yyyy-MM-dd' と、表示用の 'yyyy年M月'）。 */
+function nextMonth_(month, tz) {
+  const p = Utilities.formatDate(month, tz, 'yyyy-MM').split('-').map(Number);
+  const y = p[1] === 12 ? p[0] + 1 : p[0];
+  const m = p[1] === 12 ? 1 : p[1] + 1;
+  return { text: y + '-' + (m < 10 ? '0' : '') + m + '-01', label: y + '年' + m + '月' };
+}
+
+/** 同じ名前のシートがあれば「 (2)」などを付けた名前を返す。 */
+function uniqueSheetName_(ss, base) {
+  if (!ss.getSheetByName(base)) return base;
+  let i = 2;
+  while (ss.getSheetByName(base + ' (' + i + ')')) i++;
+  return base + ' (' + i + ')';
 }
 
 function columnLetter_(col) {
